@@ -1,0 +1,55 @@
+name: Build Android APK (tool-iterations 60)
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Assemble debug APK with MAX_TOOL_ITERATIONS=60
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v4
+        with:
+          packages: platform-tools
+
+      - name: Patch MAX_TOOL_ITERATIONS 15 -> 60 (asserted)
+        run: |
+          FILE=composeApp/src/commonMain/kotlin/com/inspiredandroid/kai/data/RemoteDataRepository.kt
+          if ! grep -q "MAX_TOOL_ITERATIONS = 15" "$FILE"; then
+            echo "::error::anchor 'MAX_TOOL_ITERATIONS = 15' not found — upstream changed; inspect before patching"
+            exit 1
+          fi
+          sed -i 's/MAX_TOOL_ITERATIONS = 15/MAX_TOOL_ITERATIONS = 60/' "$FILE"
+          if ! grep -q "MAX_TOOL_ITERATIONS = 60" "$FILE"; then
+            echo "::error::patch did not apply"
+            exit 1
+          fi
+          grep -q "MAX_REPEATED_TOOL_CALLS = 3" "$FILE" \
+            && echo "OK: runaway guard MAX_REPEATED_TOOL_CALLS=3 untouched" \
+            || { echo "::error::runaway guard missing — upstream restructured, STOP"; exit 1; }
+          git --no-pager diff --stat
+
+      - name: Build debug APK (auto-signed, no secrets)
+        run: |
+          chmod +x gradlew
+          ./gradlew :androidApp:assembleFossDebug --stacktrace
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: kai-apk-tool-iterations-60
+          path: "**/outputs/apk/**/*.apk"
+          if-no-files-found: error

@@ -1,4 +1,4 @@
-name: Build Android APK (tool-iterations 60)
+name: Build Android APK (tool-iterations 60, repeats 6)
 
 on:
   workflow_dispatch: {}
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Assemble debug APK with MAX_TOOL_ITERATIONS=60
+    name: Assemble debug APK (MAX_TOOL_ITERATIONS=60, MAX_REPEATED_TOOL_CALLS=6)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,21 +25,22 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Patch MAX_TOOL_ITERATIONS 15 -> 60 (asserted)
+      - name: Patch tool-loop limits (asserted)
         run: |
           FILE=composeApp/src/commonMain/kotlin/com/inspiredandroid/kai/data/RemoteDataRepository.kt
           if ! grep -q "MAX_TOOL_ITERATIONS = 15" "$FILE"; then
-            echo "::error::anchor 'MAX_TOOL_ITERATIONS = 15' not found — upstream changed; inspect before patching"
+            echo "::error::anchor 'MAX_TOOL_ITERATIONS = 15' not found - upstream changed; inspect before patching"
+            exit 1
+          fi
+          if ! grep -q "MAX_REPEATED_TOOL_CALLS = 3" "$FILE"; then
+            echo "::error::anchor 'MAX_REPEATED_TOOL_CALLS = 3' not found - upstream changed; inspect before patching"
             exit 1
           fi
           sed -i 's/MAX_TOOL_ITERATIONS = 15/MAX_TOOL_ITERATIONS = 60/' "$FILE"
-          if ! grep -q "MAX_TOOL_ITERATIONS = 60" "$FILE"; then
-            echo "::error::patch did not apply"
-            exit 1
-          fi
-          grep -q "MAX_REPEATED_TOOL_CALLS = 3" "$FILE" \
-            && echo "OK: runaway guard MAX_REPEATED_TOOL_CALLS=3 untouched" \
-            || { echo "::error::runaway guard missing — upstream restructured, STOP"; exit 1; }
+          sed -i 's/MAX_REPEATED_TOOL_CALLS = 3/MAX_REPEATED_TOOL_CALLS = 6/' "$FILE"
+          grep -q "MAX_TOOL_ITERATIONS = 60" "$FILE" || { echo "::error::iterations patch did not apply"; exit 1; }
+          grep -q "MAX_REPEATED_TOOL_CALLS = 6" "$FILE" || { echo "::error::repeats patch did not apply"; exit 1; }
+          echo "OK: both limits patched, asserted in file"
           git --no-pager diff --stat
 
       - name: Build debug APK (auto-signed, no secrets)
@@ -50,6 +51,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kai-apk-tool-iterations-60
+          name: kai-apk-tool-60-repeats-6
           path: "**/outputs/apk/**/*.apk"
           if-no-files-found: error

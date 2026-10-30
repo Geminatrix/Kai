@@ -1,4 +1,4 @@
-name: Build Android APK (fork60: iterations 60, repeats 6, side-by-side)
+name: "Build Android APK (fork60: iterations 60, repeats 6, side-by-side)"
 
 on:
   workflow_dispatch: {}

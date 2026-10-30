@@ -1,4 +1,4 @@
-name: Build Android APK (tool-iterations 60, repeats 6)
+name: Build Android APK (fork60: iterations 60, repeats 6, side-by-side)
 
 on:
   workflow_dispatch: {}
@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build:
-    name: Assemble debug APK (MAX_TOOL_ITERATIONS=60, MAX_REPEATED_TOOL_CALLS=6)
+    name: Assemble debug APK (fork identity, MAX_TOOL_ITERATIONS=60, MAX_REPEATED_TOOL_CALLS=6)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -43,6 +43,24 @@ jobs:
           echo "OK: both limits patched, asserted in file"
           git --no-pager diff --stat
 
+      - name: Patch app identity for side-by-side install (asserted)
+        run: |
+          GFILE=androidApp/build.gradle.kts
+          if ! grep -q 'applicationId = "com.inspiredandroid.kai"' "$GFILE"; then
+            echo "::error::anchor 'applicationId = com.inspiredandroid.kai' not found - upstream changed; inspect before patching"
+            exit 1
+          fi
+          sed -i 's|applicationId = "com.inspiredandroid.kai"|applicationId = "com.inspiredandroid.kai.fork60"|' "$GFILE"
+          grep -q 'applicationId = "com.inspiredandroid.kai.fork60"' "$GFILE" || { echo "::error::applicationId patch did not apply"; exit 1; }
+          SFILE=androidApp/src/main/res/values/strings.xml
+          if grep -q '<string name="app_name">' "$SFILE"; then
+            sed -i 's|<string name="app_name">.*</string>|<string name="app_name">Kai 9000 Fork</string>|' "$SFILE"
+            grep -q 'Kai 9000 Fork' "$SFILE" || { echo "::error::app_name patch did not apply"; exit 1; }
+          else
+            echo "::warning::app_name strings.xml not found - launcher label stays Kai 9000"
+          fi
+          echo "OK: identity patched -> com.inspiredandroid.kai.fork60, label = Kai 9000 Fork"
+
       - name: Build debug APK (auto-signed, no secrets)
         run: |
           chmod +x gradlew
@@ -51,6 +69,6 @@ jobs:
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: kai-apk-tool-60-repeats-6
+          name: kai-apk-fork60-sidebyside
           path: "**/outputs/apk/**/*.apk"
           if-no-files-found: error
